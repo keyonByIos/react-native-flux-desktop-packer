@@ -1,0 +1,9 @@
+node_modules/
+*.log
+.DS_Store
+Thumbs.db
+desktop.ini
+# 打包过程产物（测试/本地演练生成，勿提交）
+.flux-pack/
+output/
+build/

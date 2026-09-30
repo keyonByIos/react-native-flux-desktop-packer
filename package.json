@@ -1,0 +1,41 @@
+{
+  "name": "react-native-flux-desktop-packer",
+  "version": "0.1.0",
+  "description": "Package a react-native-flux-desktop app into a self-contained Windows .exe (Go launcher + go:embed payload). Install as a devDependency, add `output`/`main` to app.json, then run `flux-pack`.",
+  "license": "MIT",
+  "author": "keyon",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/keyonByIos/react-native-flux-desktop-packer.git"
+  },
+  "homepage": "https://github.com/keyonByIos/react-native-flux-desktop-packer#readme",
+  "bugs": {
+    "url": "https://github.com/keyonByIos/react-native-flux-desktop-packer/issues"
+  },
+  "private": false,
+  "main": "lib/index.js",
+  "scripts": {
+    "test": "node test/entry-check.js"
+  },
+  "bin": {
+    "flux-pack": "bin/flux-pack.js"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "launcher"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "os": [
+    "win32"
+  ],
+  "keywords": [
+    "react-native-flux-desktop",
+    "packer",
+    "electron-alternative",
+    "windows",
+    "launcher"
+  ]
+}
