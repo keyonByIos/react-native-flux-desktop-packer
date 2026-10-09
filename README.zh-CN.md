@@ -54,7 +54,7 @@ npm install --save-dev react-native-flux-desktop-packer
 | `icon` | 嵌入 exe 的 PNG 图标（可选，缺省用默认图标） |
 | `main` | 编译后的入口 JS；缺省回落 `package.json` 的 `main` |
 | `output` | 产物落地目录（默认 `build`） |
-| `pack` | 负载白名单，默认 `["dist","node_modules","assets","package.json","app.json"]` |
+| `pack` | 负载白名单，默认 `["dist","node_modules","assets","package.json","app.json"]`；另含 `pack.mode`（默认 `folder`，或 `sea`）与 `pack.assets`（资源目录，默认 `assets`） |
 
 **2.** 先编译应用，再打包：
 
@@ -83,6 +83,32 @@ await pack({ projectRoot: __dirname, keep: false });
 stage 阶段会拷贝你的 `dist/`、`node_modules/`、`assets/`、`package.json`、`app.json`，外加**正在运行 packer 的那个 `node.exe`**（N-API 跨大版本 ABI 稳定，捆绑的 node 加载你的 `.node` 原生插件没有问题）。win32-x64 上用不到的平台专属预编译包（darwin/linux 的 canvas 二进制、`ffmpeg-static`）会被过滤掉以控制体积。
 
 运行时启动器会注入 `FLUX_PACKAGED=1` 和 `FLUX_APP_DIR=<AppName>`，库会据此把 KV/日志数据路由到 `%APPDATA%\<AppName>\`——exe 放进 `Program Files` 也没有可写路径问题。
+
+## SEA 单文件模式（`pack.mode: "sea"`）
+
+上面的默认路径走的是**文件夹/启动器**负载（一个 Go exe 内嵌 `dist/` + `node_modules/` + `node.exe` 的 zip）。首启会自解压出一份可读的 **JS 源码树**到 `%LOCALAPPDATA%`——能跑，但解压出的 `dist/**/*.js` 和 `node_modules/` 让人一眼看出这是个 JS 项目。
+
+在 `app.json` 里设 `"pack": { "mode": "sea" }` 即切到 **Node SEA**（单可执行应用）构建，修掉这个观感。现有 `folder` 路径原封不动——把字段改回去即可回退。
+
+```
+app.json ─▶ [1] esbuild      全部 JS → 一个 minified app.cjs（无 dist/ 树、无 node_modules）
+         ─▶ [2] SEA 资产     app.cjs + 原生 .node（自研 + skia）+ icudtl.dat + 图片资源 → 内嵌进 blob
+         ─▶ [3] rcedit       在 node.exe 副本上写图标 + FileDescription/ProductName/…（在注入之前）
+         ─▶ [4] postject     将 NODE_SEA_BLOB 注入该 exe
+         ─▶ [5] 子系统       PE OptionalHeader.Subsystem 3→2（GUI），双击不弹控制台
+         ─▶ [6] 交付         <output>/<Name>-<version>.exe（单文件）
+```
+
+运行时，`node:sea` 跑一个 bootstrap（即 SEA 的 `main`）：把内嵌的原生/资源一次性自解压到隐藏的 `%LOCALAPPDATA%\<AppName>\run-<stamp>\`，安装原生解析钩子（skia 走 `NAPI_RS_NATIVE_LIBRARY_PATH`，你的 `.node` 走 `Module._resolveFilename`），`chdir` 到解压出的资源目录，设 `FLUX_PACKAGED=1` / `FLUX_APP_DIR`，然后 `createRequire` 加载不透明的 `app.cjs`。`.extracted` 标记使二次启动跳过重复解压。**没有 `node.exe` 子进程**——任务管理器显示品牌化的 `<App>.exe` 名与图标。
+
+收益：磁盘上不再有 JS 源码树——解压目录只有一份 minified `app.cjs` 加不透明的编译二进制（`.node`/`.dat`）与你的图片资源。
+
+**前置要求：** 构建机需支持 SEA 的 Node.js ≥ 20（用 `--experimental-sea-config`），外加 `esbuild` 和 `postject`（声明为 `optionalDependencies`；`rcedit` 也是选填—图标/版本注入缺失时优雅跳过）。缺 `esbuild`/`postject` → packer 报错并给出需执行的 `npm i`。
+
+**诚实的限制：**
+- **非绝对防逆向。** SEA blob 有公开提取工具，`app.cjs` 是 minified 明文 JS。本模式*抬高成本*、去掉“一眼是 JS 项目”的观感；**并不能**让源码不可还原。若要更硬，在 bundle 上叠 `bytenode`/V8 字节码（本次范围外）。
+- **运行期仍会写不透明原生 + 一份 `app.cjs`** 到隐藏的 `%LOCALAPPDATA%` 目录。Node SEA 的 blob 只能嵌 JS——原生 `.node` 插件与非 JS 资源必须落到真实路径（这是 C1 自解压的取舍；唯一替代是 exe 旁放 `native/` 文件夹）。
+- **体积**增长到约为 node.exe + blob + 内嵌原生（gallery demo 约 130–140 MB）。
 
 ## 打包前硬校验
 

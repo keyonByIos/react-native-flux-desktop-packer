@@ -39,6 +39,9 @@ var (
 	Entry   = "dist\\main.js"
 	AppName = "Flux"
 	ExeName = "Flux"
+	// Runtime 运行时 exe 的文件名（相对缓存根）。打包时经 -X main.Runtime 注入为应用名.exe，
+	// 使任务管理器里真正吃内存的进程显示应用名而非 node.exe；缺省兼容旧负载（node.exe）。
+	Runtime = "node.exe"
 )
 
 var (
@@ -138,10 +141,10 @@ func main() {
 		_ = os.WriteFile(ready, []byte("ok"), 0o644)
 	}
 
-	node := filepath.Join(dest, "node.exe")
+	node := filepath.Join(dest, Runtime)
 	entry := filepath.Join(dest, Entry)
 	if _, err := os.Stat(node); err != nil {
-		showFatal(ExeName, "解压后缺少 node.exe:\n"+node)
+		showFatal(ExeName, "解压后缺少运行时 exe:\n"+node)
 	}
 	if _, err := os.Stat(entry); err != nil {
 		showFatal(ExeName, "解压后缺少入口:\n"+entry)

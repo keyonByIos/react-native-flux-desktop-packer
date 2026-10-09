@@ -54,7 +54,7 @@ Requirements (build machine): Node.js ≥ 18 on Windows. Optional: [Go](https://
 | `icon` | PNG embedded as the exe icon (optional; default icon otherwise) |
 | `main` | compiled entry JS; falls back to `package.json`'s `main` |
 | `output` | where the exe lands (default `build`) |
-| `pack` | payload whitelist, default `["dist","node_modules","assets","package.json","app.json"]` |
+| `pack` | payload whitelist, default `["dist","node_modules","assets","package.json","app.json"]`; also `pack.mode` (`folder` default, or `sea`) and `pack.assets` (asset dir, default `assets`) |
 
 **2.** Build your app, then pack:
 
@@ -83,6 +83,32 @@ await pack({ projectRoot: __dirname, keep: false });
 The stage copies your `dist/`, `node_modules/`, `assets/`, `package.json` and `app.json`, plus the **`node.exe` running the packer** (N-API is ABI-stable across majors, so the bundled node loads your `.node` addon fine). Platform-specific prebuilds that can't run on win32-x64 (darwin/linux canvas binaries, `ffmpeg-static`) are filtered out to keep the exe small.
 
 At runtime the launcher sets `FLUX_PACKAGED=1` and `FLUX_APP_DIR=<AppName>`, so the library routes KV/log data to `%APPDATA%\<AppName>\` — no writable-path issues even when the exe sits in `Program Files`.
+
+## SEA single-file mode (`pack.mode: "sea"`)
+
+The default path above ships the **folder/launcher** payload (a Go exe embedding a zip of `dist/` + `node_modules/` + `node.exe`). On first launch it self-extracts a readable **JS source tree** to `%LOCALAPPDATA%` — which works, but the extracted `dist/**/*.js` and `node_modules/` make it obviously a JavaScript project.
+
+Setting `"pack": { "mode": "sea" }` in `app.json` switches to a **Node SEA** (Single Executable Application) build that fixes the optics. The existing `folder` path is untouched — flip the field back to revert.
+
+```
+app.json ─▶ [1] esbuild      all JS → one minified app.cjs (no dist/ tree, no node_modules)
+         ─▶ [2] SEA assets   app.cjs + native .node (self + skia) + icudtl.dat + image assets embedded in the blob
+         ─▶ [3] rcedit       icon + FileDescription/ProductName/… written onto a node.exe copy (BEFORE injection)
+         ─▶ [4] postject     NODE_SEA_BLOB injected into that exe
+         ─▶ [5] subsystem    PE OptionalHeader.Subsystem 3→2 (GUI) so double-click doesn't flash a console
+         ─▶ [6] deliver      <output>/<Name>-<version>.exe  (one file)
+```
+
+At runtime, `node:sea` runs a bootstrap (the SEA `main`) that self-extracts the embedded natives/assets once to a hidden `%LOCALAPPDATA%\<AppName>\run-<stamp>\`, installs native-resolution hooks (skia via `NAPI_RS_NATIVE_LIBRARY_PATH`, your `.node` via `Module._resolveFilename`), `chdir`s to the extracted asset dir, sets `FLUX_PACKAGED=1` / `FLUX_APP_DIR`, then `createRequire`s the opaque `app.cjs`. The `.extracted` marker makes second launches skip re-extraction. There is **no `node.exe` child process** — Task Manager shows the branded `<App>.exe` name and icon.
+
+What you gain: the disk no longer holds a JS source tree — the extracted dir contains a single minified `app.cjs` plus opaque compiled binaries (`.node`/`.dat`) and your image assets.
+
+**Requirements:** build machine needs Node.js ≥ 20 with SEA support (uses `--experimental-sea-config`) plus `esbuild` and `postject` (declared as `optionalDependencies`; `rcedit` is optional too — icon/version injection degrades gracefully when absent). Missing `esbuild`/`postject` → the packer errors with the exact `npm i` to run.
+
+**Honest limitations:**
+- **Not absolute anti-reverse-engineering.** SEA blobs have public extraction tools and `app.cjs` is minified plaintext JS. This *raises the bar* and removes the "obviously a JS project" surface; it does **not** make the source unrecoverable. For more, layer `bytenode`/V8 bytecode over the bundle (out of scope here).
+- **Runtime still writes opaque natives + one `app.cjs`** to a hidden `%LOCALAPPDATA%` dir. Node SEA can only embed JS in the blob — native `.node` addons and non-JS assets must land on a real path (this is the C1 self-extract tradeoff; a co-located `native/` folder is the only alternative).
+- **Size** grows to roughly node.exe + blob + embedded natives (≈ 130–140 MB for the gallery demo).
 
 ## Pre-flight validation
 
