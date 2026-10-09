@@ -1,6 +1,6 @@
 {
   "name": "react-native-flux-desktop-packer",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Package a react-native-flux-desktop app into a self-contained Windows .exe (Go launcher + go:embed payload). Install as a devDependency, add `output`/`main` to app.json, then run `flux-pack`.",
   "license": "MIT",
   "author": "keyon",
